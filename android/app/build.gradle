@@ -4,6 +4,8 @@ plugins {
 
 // Dirección donde están publicadas las apps (GitHub Pages). Cambiar aquí cuando se tenga dominio propio.
 def BASE_URL = 'https://perezalvarezlucas23-max.github.io/lb-labanda-apps/'
+def VERSION = System.getenv('VERSION_CODE') ?: '1'
+def KEYSTORE = System.getenv('LB_KEYSTORE_PATH')
 
 android {
     namespace 'co.labanda.app'
@@ -12,11 +14,11 @@ android {
     defaultConfig {
         minSdk 24
         targetSdk 34
-        versionCode (System.getenv('VERSION_CODE') ?: '1').toInteger()
-        versionName "1.0." + (System.getenv('VERSION_CODE') ?: '1')
+        versionCode = Integer.parseInt(VERSION)
+        versionName = "1.0." + VERSION
     }
 
-    flavorDimensions 'app'
+    flavorDimensions = ['app']
     productFlavors {
         cliente {
             dimension 'app'
@@ -32,22 +34,21 @@ android {
         }
     }
 
-    signingConfigs {
-        release {
-            def ks = System.getenv('LB_KEYSTORE_PATH')
-            if (ks) {
-                storeFile file(ks)
-                storePassword System.getenv('LB_KEYSTORE_PASSWORD')
-                keyAlias System.getenv('LB_KEY_ALIAS') ?: 'labanda'
-                keyPassword System.getenv('LB_KEYSTORE_PASSWORD')
+    if (KEYSTORE) {
+        signingConfigs {
+            lb {
+                storeFile = file(KEYSTORE)
+                storePassword = System.getenv('LB_KEYSTORE_PASSWORD')
+                keyAlias = 'labanda'
+                keyPassword = System.getenv('LB_KEYSTORE_PASSWORD')
             }
         }
     }
 
     buildTypes {
         release {
-            minifyEnabled false
-            signingConfig System.getenv('LB_KEYSTORE_PATH') ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled = false
+            signingConfig = KEYSTORE ? signingConfigs.lb : signingConfigs.debug
         }
     }
 

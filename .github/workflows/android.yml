@@ -42,7 +42,7 @@ jobs:
       - name: Compilar
         env:
           VERSION_CODE: ${{ github.run_number }}
-        run: gradle -p android assembleClienteRelease assembleEquipoRelease --no-daemon
+        run: gradle -p android assembleClienteRelease assembleEquipoRelease --no-daemon --stacktrace
 
       - name: Publicar en Releases
         env:
