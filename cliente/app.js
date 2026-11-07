@@ -273,8 +273,7 @@
     var txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//LB La Banda//Citas//ES', 'BEGIN:VEVENT', 'UID:' + c.id_cita + '@labanda',
       'DTSTART;TZID=America/Bogota:' + f + 'T' + ini, 'DTEND;TZID=America/Bogota:' + f + 'T' + fin,
       'SUMMARY:' + c.servicio_nombre + ' – La Banda', 'LOCATION:' + c.sede_nombre, 'DESCRIPTION:Barbero: ' + c.barbero_nombre, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-    var a = h('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/calendar' })), download: 'cita-la-banda.ics' });
-    document.body.appendChild(a); a.click(); a.remove();
+    UI.descargar('cita-la-banda.ics', 'text/calendar', txt);
   }
   function listo() {
     var c = S.ultima;

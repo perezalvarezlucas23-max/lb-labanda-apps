@@ -1,0 +1,64 @@
+name: APK Android
+# Compila los APK de La Banda (clientes) y LB Equipo y los publica en Releases > "apk-ultima".
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Llave de firma
+        env:
+          KS_B64: ${{ secrets.LB_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.LB_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/lb.jks"
+            echo "LB_KEYSTORE_PATH=$RUNNER_TEMP/lb.jks" >> "$GITHUB_ENV"
+            echo "LB_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "FIRMA=definitiva" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Sin secretos LB_KEYSTORE_B64 / LB_KEYSTORE_PASSWORD: se firma con una llave de prueba."
+            echo "FIRMA=de prueba (QA)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Compilar
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: gradle -p android assembleClienteRelease assembleEquipoRelease --no-daemon
+
+      - name: Publicar en Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p salida
+          cp android/app/build/outputs/apk/cliente/release/*.apk salida/LaBanda-clientes.apk
+          cp android/app/build/outputs/apk/equipo/release/*.apk salida/LBEquipo-barberos-admin.apk
+          NOTAS="Versión 1.0.${{ github.run_number }} · firma ${FIRMA}.
+          - LaBanda-clientes.apk: app para clientes.
+          - LBEquipo-barberos-admin.apk: app para barberos y administrador.
+          Instalar: abre este enlace desde el celular Android, descarga el APK y permite 'instalar apps desconocidas' para Chrome cuando lo pida."
+          gh release delete apk-ultima --yes --cleanup-tag 2>/dev/null || true
+          gh release create apk-ultima salida/*.apk --title "Apps Android – 1.0.${{ github.run_number }}" --notes "$NOTAS" --latest
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: salida/*.apk

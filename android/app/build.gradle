@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Dirección donde están publicadas las apps (GitHub Pages). Cambiar aquí cuando se tenga dominio propio.
+def BASE_URL = 'https://perezalvarezlucas23-max.github.io/lb-labanda-apps/'
+
+android {
+    namespace 'co.labanda.app'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+        versionCode (System.getenv('VERSION_CODE') ?: '1').toInteger()
+        versionName "1.0." + (System.getenv('VERSION_CODE') ?: '1')
+    }
+
+    flavorDimensions 'app'
+    productFlavors {
+        cliente {
+            dimension 'app'
+            applicationId 'co.labanda.cliente'
+            resValue 'string', 'app_name', 'La Banda'
+            buildConfigField 'String', 'START_URL', "\"${BASE_URL}cliente/\""
+        }
+        equipo {
+            dimension 'app'
+            applicationId 'co.labanda.equipo'
+            resValue 'string', 'app_name', 'LB Equipo'
+            buildConfigField 'String', 'START_URL', "\"${BASE_URL}equipo/\""
+        }
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv('LB_KEYSTORE_PATH')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('LB_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('LB_KEY_ALIAS') ?: 'labanda'
+                keyPassword System.getenv('LB_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv('LB_KEYSTORE_PATH') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+}

@@ -113,7 +113,16 @@
   /** Botón de instalación (Android) y guía para iPhone. */
   var promptInstalar = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); promptInstalar = e; document.dispatchEvent(new Event('lb-installable')); });
-  function instalado() { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone; }
+  var enAPK = /LBApp\//.test(navigator.userAgent) && !!window.LBAndroid;
+  function instalado() { return enAPK || window.matchMedia('(display-mode: standalone)').matches || navigator.standalone; }
+  /** Guarda o abre un archivo generado por la app (cita .ics, reporte .csv). En el APK lo abre con la app del celular. */
+  function descargar(nombre, tipo, texto) {
+    if (enAPK) { window.LBAndroid.abrirArchivo(nombre, tipo, texto); return; }
+    var url = URL.createObjectURL(new Blob([texto], { type: tipo }));
+    var a = h('a', { href: url, download: nombre });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
   function esIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function botonInstalar(nombreApp) {
     if (instalado()) return null;
@@ -131,5 +140,5 @@
   }
 
   window.UI = { h: h, icon: icon, money: money, fechaCorta: fechaCorta, hora12: hora12, iniciales: iniciales, toast: toast, sheet: sheet,
-    confirmar: confirmar, accion: accion, envBanner: envBanner, botonInstalar: botonInstalar, registrarSW: registrarSW, DIA: DIA, MES: MES };
+    confirmar: confirmar, accion: accion, envBanner: envBanner, botonInstalar: botonInstalar, registrarSW: registrarSW, descargar: descargar, DIA: DIA, MES: MES };
 })();

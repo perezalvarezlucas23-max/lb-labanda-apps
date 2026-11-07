@@ -196,8 +196,7 @@
   function exportarCSV(citas) {
     var cols = ['fecha', 'hora_inicio', 'cliente_nombre', 'barbero_nombre', 'sede_nombre', 'servicio_nombre', 'valor', 'comision', 'origen', 'estado'];
     var txt = [cols.join(';')].concat(citas.map(function (c) { return cols.map(function (k) { return '"' + String(c[k] == null ? '' : c[k]).replace(/"/g, '""') + '"'; }).join(';'); })).join('\n');
-    var a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv;charset=utf-8' })), download: 'atenciones-la-banda.csv' });
-    document.body.appendChild(a); a.click(); a.remove();
+    UI.descargar('atenciones-la-banda.csv', 'text/csv', '﻿' + txt);
   }
   function resumen() {
     return hoy().then(function (hoyF) {
