@@ -82,70 +82,133 @@
       UI.botonInstalar('LB Equipo'));
   }
 
-  // ---------- agenda ----------
+  // ---------- agenda: historial · hoy · próximas ----------
+  var tabAgenda = 'hoy', histDias = 30;
+  function grupos(citas, desc) {
+    var orden = citas.slice().sort(function (x, y) { return (x.fecha + x.hora_inicio) < (y.fecha + y.hora_inicio) ? -1 : 1; });
+    if (desc) orden.reverse();
+    var out = [], actual = null;
+    orden.forEach(function (c) { if (!actual || actual.fecha !== c.fecha) { actual = { fecha: c.fecha, citas: [] }; out.push(actual); } actual.citas.push(c); });
+    return out;
+  }
+  function comisionDe(c) {
+    if (c.estado === 'completada') return LB.num(c.comision);
+    if (c.estado === 'confirmada' || c.estado === 'pendiente') return LB.num(c.comision_estimada);
+    return 0;
+  }
+  /** Una cita como la ve el equipo. El valor que paga el cliente solo aparece si el servidor lo envió (administrador). */
+  function tarjetaCita(c, idBarbero, conAcciones) {
+    var porAtender = c.estado === 'confirmada' || c.estado === 'pendiente';
+    var com = comisionDe(c);
+    var lineaCom = c.estado === 'completada' ? 'Comisión: ' + money(com) : porAtender ? 'Comisión estimada: ' + money(com) : null;
+    return h('div', { class: 'row', style: 'align-items:stretch;gap:12px' },
+      h('span', { class: 'small strong', style: 'width:64px;padding-top:14px;color:' + (porAtender ? 'var(--red-text)' : 'var(--muted)') }, UI.hora12(c.hora_inicio)),
+      h('div', { class: 'card tight grow col', style: 'gap:8px' + (porAtender && conAcciones ? ';border-color:var(--red-line)' : '') },
+        h('div', { class: 'row between' }, h('span', { class: 'col', style: 'gap:2px' }, h('span', { class: 'strong' }, limpio(c.cliente_nombre)),
+          h('span', { class: 'small muted' }, c.servicio_nombre + ' · ' + (ORIGEN[c.origen] || c.origen) + (c.valor !== undefined ? ' · Valor ' + money(c.valor) : ''))), badgeEstado(c.estado)),
+        lineaCom ? h('span', { class: 'small strong', style: 'color:var(--red-text)' }, lineaCom) : null,
+        c.notas ? h('span', { class: 'small muted' }, 'Nota: ' + c.notas) : null,
+        porAtender && conAcciones ? h('div', { class: 'grid2' },
+          h('button', { class: 'btn sm', style: 'width:100%', onClick: function (e) { var bt = e.currentTarget; UI.accion(bt, api('marcarCita', { id: c.id_cita, estado: 'completada', id_barbero: idBarbero }), 'Marcada como atendida').then(function () { invalidar(); render(); }).catch(function () {}); } }, 'Marcar atendida'),
+          h('button', { class: 'btn sm danger', style: 'width:100%', onClick: function (e) { var bt = e.currentTarget; UI.confirmar('No asistió', '¿Confirmas que ' + limpio(c.cliente_nombre) + ' no llegó a la cita?', function () { UI.accion(bt, api('marcarCita', { id: c.id_cita, estado: 'no_asistio', id_barbero: idBarbero }), 'Registrado').then(function () { invalidar(); render(); }).catch(function () {}); }); } }, 'No asistió')) : null));
+  }
+  function listaPorDia(gs, idBarbero, conAcciones, vacio) {
+    if (!gs.length) return h('div', { class: 'empty' }, vacio);
+    return h('div', { class: 'col', style: 'gap:16px' }, gs.map(function (g) {
+      return h('div', { class: 'col', style: 'gap:10px' }, h('span', { class: 'eyebrow', style: 'color:var(--muted)' }, UI.fechaCorta(g.fecha)),
+        g.citas.map(function (c) { return tarjetaCita(c, idBarbero, conAcciones); }));
+    }));
+  }
   function agenda(idBarbero) {
     return hoy().then(function (hoyF) {
       var fecha = S.fecha || hoyF;
-      return api('miAgenda', { fecha: fecha, id_barbero: idBarbero }).then(function (d) {
+      return api('miAgenda', { fecha: tabAgenda === 'hoy' ? fecha : hoyF, id_barbero: idBarbero }).then(function (d) {
         var b = d.barbero, activa = LB.si(b.agenda_activa);
-        var atendidas = d.citas.filter(function (c) { return c.estado === 'completada'; });
-        var comision = atendidas.reduce(function (t, c) { return t + LB.num(c.comision); }, 0);
         var sw = h('button', { class: 'switch', 'aria-pressed': activa ? 'true' : 'false', 'aria-label': 'Activar o pausar la agenda' });
         sw.addEventListener('click', function () {
           var nueva = sw.getAttribute('aria-pressed') !== 'true';
           UI.accion(null, api('setAgenda', { activa: nueva, id_barbero: idBarbero }), nueva ? 'Agenda activa: ya pueden reservar contigo' : 'Agenda pausada').then(function () { invalidar(); render(); }).catch(function () {});
         });
-        function cambiarDia(n) { S.fecha = LB.sumarDias(fecha, n); render(); }
-        return h('div', { class: 'col', style: 'gap:16px' },
-          idBarbero ? null : encabezado('Mi agenda', limpio(b.nombre)),
-          h('div', { class: 'row between' }, h('button', { class: 'icon-btn', 'aria-label': 'Día anterior', onClick: function () { cambiarDia(-1); } }, icon('chevL', 20)),
-            h('div', { class: 'col center', style: 'gap:2px' }, h('span', { class: 'strong' }, (fecha === hoyF ? 'Hoy, ' : '') + UI.fechaCorta(fecha)),
-              fecha !== hoyF ? h('button', { class: 'small', style: 'background:none;border:0;color:var(--red-text);cursor:pointer', onClick: function () { S.fecha = null; render(); } }, 'Volver a hoy') : null),
-            h('button', { class: 'icon-btn', 'aria-label': 'Día siguiente', onClick: function () { cambiarDia(1); } }, icon('chevR', 20))),
+        var tabs = h('div', { class: 'grid3', role: 'tablist' }, [['historial', 'Historial'], ['hoy', 'Hoy'], ['proximas', 'Próximas']].map(function (x) {
+          return h('button', { class: 'chip' + (tabAgenda === x[0] ? ' on' : ''), role: 'tab', 'aria-selected': tabAgenda === x[0] ? 'true' : 'false', onClick: function () { tabAgenda = x[0]; S.fecha = null; render(); } }, x[1]);
+        }));
+        var cabeza = [idBarbero ? null : encabezado('Mi agenda', limpio(b.nombre)),
           h('div', { class: 'card tight row between' }, h('span', { class: 'col', style: 'gap:3px' }, h('span', { class: 'strong' }, activa ? 'Agenda activa' : 'Agenda pausada'),
-            h('span', { class: 'small muted' }, activa ? 'Los clientes pueden reservar contigo' : 'No recibes reservas nuevas. Las citas agendadas se mantienen.')), sw),
-          h('div', { class: 'grid3' }, kpi('Citas del día', d.citas.length), kpi('Atendidas', atendidas.length), kpi('Comisión', money(comision), true)),
-          d.citas.length ? h('div', { class: 'col', style: 'gap:10px' }, d.citas.map(function (c) {
-            var porAtender = c.estado === 'confirmada' || c.estado === 'pendiente';
-            return h('div', { class: 'row', style: 'align-items:stretch;gap:12px' }, h('span', { class: 'small strong', style: 'width:64px;padding-top:14px;color:' + (porAtender ? 'var(--red-text)' : 'var(--muted)') }, UI.hora12(c.hora_inicio)),
-              h('div', { class: 'card tight grow col', style: 'gap:10px' + (porAtender ? ';border-color:var(--red-line)' : '') },
-                h('div', { class: 'row between' }, h('span', { class: 'col', style: 'gap:2px' }, h('span', { class: 'strong' }, limpio(c.cliente_nombre)),
-                  h('span', { class: 'small muted' }, c.servicio_nombre + ' · ' + (ORIGEN[c.origen] || c.origen) + ' · ' + money(c.valor))), badgeEstado(c.estado)),
-                c.notas ? h('span', { class: 'small muted' }, 'Nota: ' + c.notas) : null,
-                porAtender ? h('div', { class: 'grid2' },
-                  h('button', { class: 'btn sm', style: 'width:100%', onClick: function (e) { var bt = e.currentTarget; UI.accion(bt, api('marcarCita', { id: c.id_cita, estado: 'completada', id_barbero: idBarbero }), 'Marcada como atendida').then(function () { invalidar(); render(); }).catch(function () {}); } }, 'Marcar atendida'),
-                  h('button', { class: 'btn sm danger', style: 'width:100%', onClick: function (e) { var bt = e.currentTarget; UI.confirmar('No asistió', '¿Confirmas que ' + limpio(c.cliente_nombre) + ' no llegó a la cita?', function () { UI.accion(bt, api('marcarCita', { id: c.id_cita, estado: 'no_asistio', id_barbero: idBarbero }), 'Registrado').then(function () { invalidar(); render(); }).catch(function () {}); }); } }, 'No asistió')) : null));
-          })) : h('div', { class: 'empty' }, 'No hay citas para este día.'));
+            h('span', { class: 'small muted' }, activa ? 'Los clientes pueden reservar contigo' : 'No recibes reservas nuevas. Las citas agendadas se mantienen.')), sw), tabs];
+        function armar(cuerpo) { return h('div', { class: 'col', style: 'gap:16px' }, cabeza, cuerpo); }
+
+        if (tabAgenda === 'hoy') {
+          var atendidas = d.citas.filter(function (c) { return c.estado === 'completada'; });
+          var ganado = d.citas.reduce(function (t, c) { return t + (c.estado === 'completada' ? comisionDe(c) : 0); }, 0);
+          function cambiarDia(n) { S.fecha = LB.sumarDias(fecha, n); render(); }
+          return armar(h('div', { class: 'col', style: 'gap:16px' },
+            h('div', { class: 'row between' }, h('button', { class: 'icon-btn', 'aria-label': 'Día anterior', onClick: function () { cambiarDia(-1); } }, icon('chevL', 20)),
+              h('div', { class: 'col center', style: 'gap:2px' }, h('span', { class: 'strong' }, (fecha === hoyF ? 'Hoy, ' : '') + UI.fechaCorta(fecha)),
+                fecha !== hoyF ? h('button', { class: 'small', style: 'background:none;border:0;color:var(--red-text);cursor:pointer', onClick: function () { S.fecha = null; render(); } }, 'Volver a hoy') : null),
+              h('button', { class: 'icon-btn', 'aria-label': 'Día siguiente', onClick: function () { cambiarDia(1); } }, icon('chevR', 20))),
+            h('div', { class: 'grid3' }, kpi('Citas del día', d.citas.length), kpi('Atendidas', atendidas.length), kpi('Comisión ganada', money(ganado), true)),
+            d.citas.length ? h('div', { class: 'col', style: 'gap:10px' }, d.citas.map(function (c) { return tarjetaCita(c, idBarbero, true); }))
+              : h('div', { class: 'empty' }, 'No hay citas para este día.')));
+        }
+        if (tabAgenda === 'proximas') {
+          return api('miControl', { desde: LB.sumarDias(hoyF, 1), hasta: LB.sumarDias(hoyF, 60), id_barbero: idBarbero }).then(function (r) {
+            var prox = r.citas.filter(function (c) { return c.estado === 'confirmada' || c.estado === 'pendiente'; });
+            var est = prox.reduce(function (t, c) { return t + comisionDe(c); }, 0);
+            return armar(h('div', { class: 'col', style: 'gap:16px' },
+              h('div', { class: 'grid2' }, kpi('Citas próximas', prox.length), kpi('Comisión estimada', money(est), true)),
+              h('span', { class: 'small muted' }, 'Desde mañana hasta el ' + UI.fechaCorta(r.hasta)),
+              listaPorDia(grupos(prox, false), idBarbero, false, 'No tienes citas programadas en los próximos días.')));
+          });
+        }
+        return api('miControl', { desde: LB.sumarDias(hoyF, -histDias), hasta: LB.sumarDias(hoyF, -1), id_barbero: idBarbero }).then(function (r) {
+          var comp = r.citas.filter(function (c) { return c.estado === 'completada'; });
+          var ganado = comp.reduce(function (t, c) { return t + comisionDe(c); }, 0);
+          var noVino = r.citas.filter(function (c) { return c.estado === 'no_asistio'; }).length;
+          var dias = h('div', { class: 'chips' }, [[7, 'Últimos 7 días'], [30, '30 días'], [90, '90 días']].map(function (x) {
+            return h('button', { class: 'chip' + (histDias === x[0] ? ' on' : ''), onClick: function () { histDias = x[0]; render(); } }, x[1]);
+          }));
+          return armar(h('div', { class: 'col', style: 'gap:16px' }, dias,
+            h('div', { class: 'grid3' }, kpi('Atendidos', comp.length), kpi('Comisión ganada', money(ganado), true), kpi('No asistieron', noVino)),
+            listaPorDia(grupos(r.citas, true), idBarbero, false, 'Sin servicios en este periodo.')));
+        });
       });
     });
   }
   function vistaAgenda() { return agenda().then(function (el) { return h('div', { class: 'screen' }, el); }); }
 
-  // ---------- mi control ----------
+  // ---------- mi control (servicios y comisión; el valor del cliente solo lo ve el administrador) ----------
   var periodoControl = 'semana';
   function control() {
     return hoy().then(function (hoyF) {
       var r = periodo(periodoControl, hoyF);
       return api('miControl', r).then(function (d) {
-        var res = LB.resumen(d.citas, [], {});
+        var comp = d.citas.filter(function (c) { return c.estado === 'completada'; });
+        var comision = comp.reduce(function (t, c) { return t + LB.num(c.comision); }, 0);
+        var porAtender = d.citas.filter(function (c) { return c.estado === 'confirmada' || c.estado === 'pendiente'; }).length;
+        var porServ = {};
+        comp.forEach(function (c) { var x = porServ[c.id_servicio] || (porServ[c.id_servicio] = { n: 0, com: 0, valor: 0 }); x.n++; x.com += LB.num(c.comision); x.valor += LB.num(c.valor); });
         var chips = h('div', { class: 'grid3' }, [['hoy', 'Hoy'], ['semana', 'Semana'], ['mes', 'Mes']].map(function (x) {
           return h('button', { class: 'chip' + (periodoControl === x[0] ? ' on' : ''), 'aria-pressed': periodoControl === x[0] ? 'true' : 'false', onClick: function () { periodoControl = x[0]; render(); } }, x[1]);
         }));
-        var ult = d.citas.filter(function (c) { return c.estado === 'completada'; }).reverse().slice(0, 5);
+        var ult = comp.slice().reverse().slice(0, 5);
         return h('div', { class: 'screen' }, encabezado(limpio(S.u.nombre), 'Mi control'), chips,
           h('span', { class: 'small muted' }, UI.fechaCorta(r.desde) + (r.hasta !== r.desde ? ' al ' + UI.fechaCorta(r.hasta) : '')),
-          h('div', { class: 'grid2' }, kpi('Clientes atendidos', res.atendidos), kpi('Total en servicios', money(res.ingresosServicios)), kpi('Mi comisión', money(res.comisiones), true), kpi('No asistieron', res.noAsistieron)),
+          h('div', { class: 'grid2' }, kpi('Servicios atendidos', comp.length), kpi('Mi comisión', money(comision), true),
+            kpi('Por atender', porAtender), kpi('No asistieron', d.citas.filter(function (c) { return c.estado === 'no_asistio'; }).length),
+            d.conValor ? kpi('Total en servicios', money(comp.reduce(function (t, c) { return t + LB.num(c.valor); }, 0))) : null),
           h('h2', null, 'Por servicio'),
           h('div', { class: 'card list' }, d.servicios.map(function (s) {
-            var x = res.porServicio[s.id_servicio] || { atendidos: 0, total: 0 };
-            return h('div', { class: 'row between' }, h('span', { class: /premium/i.test(s.nombre) ? 'strong' : '', style: /premium/i.test(s.nombre) ? 'color:var(--red-text)' : '' }, s.nombre),
-              h('span', { class: 'muted' }, x.atendidos + ' · ', h('span', { class: 'strong', style: 'color:var(--text)' }, money(x.total))));
+            var x = porServ[s.id_servicio] || { n: 0, com: 0 };
+            var prem = /premium/i.test(s.nombre);
+            return h('div', { class: 'row between' }, h('span', { class: prem ? 'strong' : '', style: prem ? 'color:var(--red-text)' : '' }, s.nombre),
+              h('span', { class: 'muted' }, x.n + ' · comisión ', h('span', { class: 'strong', style: 'color:var(--text)' }, money(x.com))));
           })),
           h('h2', null, 'Últimos atendidos'),
           ult.length ? h('div', { class: 'card list' }, ult.map(function (c) {
             return h('div', { class: 'row between' }, h('span', { class: 'col', style: 'gap:2px' }, h('span', { class: 'strong' }, limpio(c.cliente_nombre)), h('span', { class: 'small muted' }, c.servicio_nombre + ' · ' + UI.fechaCorta(c.fecha))),
-              h('span', { class: 'strong' }, money(c.valor)));
-          })) : h('div', { class: 'empty' }, 'Sin servicios atendidos en este periodo.'));
+              h('span', { class: 'col', style: 'gap:2px;text-align:right' }, h('span', { class: 'small muted' }, 'Comisión'), h('span', { class: 'strong' }, money(c.comision))));
+          })) : h('div', { class: 'empty' }, 'Sin servicios atendidos en este periodo.'),
+          h('a', { class: 'btn ghost', href: '#/agenda', onClick: function () { tabAgenda = 'historial'; } }, 'Ver historial completo'));
       });
     });
   }
@@ -203,7 +266,7 @@
       var r = F.periodo === 'rango' && F.desde && F.hasta ? { desde: F.desde, hasta: F.hasta } : periodo(F.periodo, hoyF);
       return datosAdmin(r.desde, r.hasta, true).then(function (d) {
         var res = LB.resumen(d.citas, d.ventas, F);
-        var barberos = d.equipo.filter(function (u) { return u.rol === 'barbero'; });
+        var barberos = d.equipo.filter(function (u) { return u.atiende; });
         var citasF = d.citas.filter(function (c) { return (F.sede === 'Todas' || c.id_sede === F.sede) && (F.barbero === 'Todos' || c.id_barbero === F.barbero); });
         var selB = h('select', { class: 'input', id: 'fbarbero', onChange: function (e) { F.barbero = e.target.value; render(); } },
           h('option', { value: 'Todos' }, 'Todos los barberos'), barberos.map(function (b) { return h('option', { value: b.id, selected: F.barbero === b.id }, limpio(b.nombre)); }));
@@ -251,24 +314,27 @@
   var agendaDe = null;
   function agendas() {
     return hoy().then(function (hoyF) { return datosAdmin(hoyF, hoyF); }).then(function (d) {
-      var barberos = d.equipo.filter(function (u) { return u.rol === 'barbero'; });
+      var barberos = d.equipo.filter(function (u) { return u.atiende; }).sort(function (x, y) { return x.id === S.u.id ? -1 : y.id === S.u.id ? 1 : 0; });
       if (!agendaDe || !porId(barberos, 'id', agendaDe)) agendaDe = (barberos[0] || {}).id;
-      var chips = h('div', { class: 'chips' }, barberos.map(function (b) { return h('button', { class: 'chip' + (agendaDe === b.id ? ' on' : ''), onClick: function () { agendaDe = b.id; render(); } }, limpio(b.nombre)); }));
+      var chips = h('div', { class: 'chips' }, barberos.map(function (b) { return h('button', { class: 'chip' + (agendaDe === b.id ? ' on' : ''), onClick: function () { agendaDe = b.id; render(); } }, b.id === S.u.id ? 'Mi agenda' : limpio(b.nombre)); }));
       if (!agendaDe) return h('div', { class: 'screen' }, encabezado('Administración', 'Agendas'), h('div', { class: 'empty' }, 'Primero registra un barbero.'));
-      return agenda(agendaDe).then(function (el) { return h('div', { class: 'screen' }, encabezado('Administración', 'Agendas'), chips, el); });
+      return agenda(agendaDe).then(function (el) { return h('div', { class: 'screen' }, encabezado('Administración', 'Agendas'),
+        h('span', { class: 'small muted', style: 'margin-top:-8px' }, 'Como administrador ves la agenda de cada barbero con el valor de cada servicio.'), chips, el); });
     });
   }
 
   function barberosV() {
     return hoy().then(function (hoyF) { return datosAdmin(hoyF, hoyF, true); }).then(function (d) {
-      var barberos = d.equipo.filter(function (u) { return u.rol === 'barbero'; });
+      var barberos = d.equipo.filter(function (u) { return u.rol === 'barbero' || u.id === S.u.id; })
+        .sort(function (x, y) { return x.rol === 'admin' ? -1 : y.rol === 'admin' ? 1 : 0; });
       return h('div', { class: 'screen' }, encabezado('Solo administrador', 'Barberos'),
         h('span', { class: 'small muted', style: 'margin-top:-8px' }, 'Cada barbero tiene su perfil, sede, comisión y clave de ingreso.'),
         barberos.map(function (b) {
           return h('div', { class: 'card tight row' }, h('span', { class: 'avatar' }, b.foto_url ? h('img', { src: b.foto_url, alt: '' }) : UI.iniciales(limpio(b.nombre))),
             h('span', { class: 'col grow', style: 'gap:3px' }, h('span', { class: 'strong' }, limpio(b.nombre)),
               h('span', { class: 'small muted' }, (String(b.id_sede || '').split(',').filter(Boolean).map(function (s) { return limpio((porId(d.sedes, 'id_sede', s) || {}).nombre || s); }).join(' · ') || 'Sin sede') + ' · Comisión ' + (b.comision_pct === '' ? '—' : b.comision_pct + '%')),
-              h('span', { class: 'row', style: 'gap:6px' }, b.agenda_activa ? h('span', { class: 'badge ok' }, 'Agenda activa') : h('span', { class: 'badge gray' }, 'Agenda pausada'),
+              h('span', { class: 'row wrap', style: 'gap:6px' }, b.rol === 'admin' ? h('span', { class: 'badge red' }, b.atiende ? 'Administrador · también atiende' : 'Administrador') : null,
+                b.atiende ? (b.agenda_activa ? h('span', { class: 'badge ok' }, 'Agenda activa') : h('span', { class: 'badge gray' }, 'Agenda pausada')) : null,
                 b.tiene_clave ? null : h('span', { class: 'badge warn' }, 'Sin clave'))),
             h('a', { class: 'btn sm ghost', href: '#/barberos/' + b.id }, 'Editar'));
         }),
@@ -292,21 +358,28 @@
       var ofrece = String(b.servicios || '').split(',').filter(Boolean);
       var checks = d.servicios.map(function (s) { var c = h('input', { type: 'checkbox', checked: !ofrece.length || ofrece.indexOf(s.id_servicio) >= 0 }); return { id: s.id_servicio, c: c, el: h('label', { class: 'check' }, c, s.nombre) }; });
       var activa = h('input', { type: 'checkbox', checked: LB.si(b.agenda_activa) });
+      var esAdm = b.rol === 'admin';
+      var atiendeCk = h('input', { type: 'checkbox', checked: !esAdm || !!b.atiende });
+      var zonaServicios = h('div', { class: 'col', style: 'gap:10px' });
+      function pintarServ() { zonaServicios.style.display = atiendeCk.checked ? 'flex' : 'none'; }
+      atiendeCk.addEventListener('change', pintarServ);
       var btn = h('button', { class: 'btn' }, nuevo ? 'Guardar barbero' : 'Guardar cambios');
       btn.addEventListener('click', function () {
         if (nuevo && !pin.value) { UI.toast('Asigna una clave para que el barbero pueda entrar', true); return; }
         var row = { nombre: nombre.value.trim(), celular: cel.value, id_sede: sede.value, comision_pct: com.value, especialidades: esp.value.trim(), foto_url: foto.value.trim(),
-          servicios: checks.filter(function (x) { return x.c.checked; }).map(function (x) { return x.id; }).join(','), agenda_activa: activa.checked };
+          servicios: atiendeCk.checked ? checks.filter(function (x) { return x.c.checked; }).map(function (x) { return x.id; }).join(',') : '', agenda_activa: atiendeCk.checked && activa.checked };
+        if (atiendeCk.checked && !row.servicios) { UI.toast('Elige al menos un servicio', true); return; }
         if (!nuevo) row.id = b.id;
         UI.accion(btn, api('guardarBarbero', { row: row, pin: pin.value || undefined }), nuevo ? 'Barbero registrado' : 'Cambios guardados').then(function () { invalidar(); go('barberos'); }).catch(function () {});
       });
-      return h('div', { class: 'screen' }, h('a', { class: 'small strong', href: '#/barberos' }, '← Barberos'), encabezado('Solo administrador', nuevo ? 'Registrar barbero' : 'Editar barbero'),
+      return h('div', { class: 'screen' }, h('a', { class: 'small strong', href: '#/barberos' }, '← Barberos'), encabezado('Solo administrador', nuevo ? 'Registrar barbero' : esAdm ? 'Mi perfil' : 'Editar barbero'),
         h('div', { class: 'card col', style: 'gap:12px' }, campo('Nombre completo', nombre), campo('Celular (será su usuario)', cel),
           h('div', { class: 'grid2' }, campo('Sede', sede), campo('Comisión (%)', com)), campo('Especialidades (las ve el cliente)', esp), campo('Foto', foto),
           campo(nuevo ? 'Clave de ingreso' : 'Nueva clave', pin)),
-        h('span', { class: 'eyebrow', style: 'color:var(--muted)' }, 'Servicios que realiza'), h('div', { class: 'grid2' }, checks.map(function (x) { return x.el; })),
-        h('label', { class: 'check' }, activa, 'Agenda activa (recibe reservas)'),
-        !nuevo ? h('a', { class: 'btn ghost', href: '#/horarios/' + b.id }, 'Ver y editar sus horarios') : null, btn);
+        esAdm ? h('label', { class: 'check' }, atiendeCk, 'También atiendo clientes (tengo mi propia agenda)') : null,
+        (zonaServicios.append(h('span', { class: 'eyebrow', style: 'color:var(--muted)' }, 'Servicios que realiza'), h('div', { class: 'grid2' }, checks.map(function (x) { return x.el; })),
+          h('label', { class: 'check' }, activa, 'Agenda activa (recibe reservas)')), pintarServ(), zonaServicios),
+        !nuevo && (!esAdm || b.atiende) ? h('a', { class: 'btn ghost', href: '#/horarios/' + b.id }, esAdm ? 'Ver y editar mis horarios' : 'Ver y editar sus horarios') : null, btn);
     });
   }
 

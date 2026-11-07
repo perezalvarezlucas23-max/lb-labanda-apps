@@ -5,7 +5,7 @@ Dos apps instalables (PWA) para la barbería **LB La Banda**, con la informació
 | App | Para quién | Dirección (GitHub Pages) |
 | --- | --- | --- |
 | **La Banda** | Clientes: reservar, tienda, puntos | `https://<usuario>.github.io/lb-labanda-apps/cliente/` |
-| **LB Equipo** | Barberos y administrador. En computador es el **panel web** | `https://<usuario>.github.io/lb-labanda-apps/equipo/` |
+| **LB Equipo** | Barberos (solo sus servicios y comisión) y administrador (toda la operación; también puede atender). En computador es el **panel web** | `https://<usuario>.github.io/lb-labanda-apps/equipo/` |
 
 ## Ambientes
 

@@ -1,5 +1,5 @@
 // Service worker: guarda la app para abrir rápido y sin señal. Los datos (API) nunca se guardan aquí.
-const VERSION = 'lb-equipo-v2';
+const VERSION = 'lb-equipo-v3';
 const SHELL = ['./', './index.html', './app.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   '../shared/lb.css', '../shared/config.js', '../shared/logic.js', '../shared/qa-backend.js', '../shared/api.js', '../shared/ui.js',
   '../shared/img/lb-emblema.png', '../shared/img/lb-wordmark.png'];

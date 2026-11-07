@@ -83,6 +83,8 @@ var LB = (function () {
   function esHora(h) { return /^\d{2}:\d{2}$/.test(String(h)); }
   function sedesDe(b) { return String(b.id_sede || '').split(',').map(function (s) { return s.trim(); }).filter(String); }
   function serviciosDe(b) { return String(b.servicios || '').split(',').map(function (s) { return s.trim(); }).filter(String); }
+  /** Atiende clientes: todo barbero, y el administrador cuando tiene servicios asignados. */
+  function atiende(u) { return u.rol === 'barbero' || (u.rol === 'admin' && serviciosDe(u).length > 0); }
   function fail(msg) { var e = new Error(msg); e.lb = true; throw e; }
   function copia(o) { var r = {}; for (var k in o) if (k !== '_row' && k !== 'clave_hash') r[k] = o[k]; return r; }
   function porId(rows, col) { var m = {}; rows.forEach(function (r) { m[String(r[col])] = r; }); return m; }
@@ -159,7 +161,7 @@ var LB = (function () {
 
     function equipo() { return db.list('Equipo'); }
     function barbero(id) {
-      var b = equipo().filter(function (r) { return r.id === id && r.rol === 'barbero'; })[0];
+      var b = equipo().filter(function (r) { return r.id === id && atiende(r); })[0];
       if (!b) fail('Barbero no encontrado');
       return b;
     }
@@ -223,7 +225,7 @@ var LB = (function () {
           sedes: db.list('Sedes').filter(function (s) { return si(s.activa); }).map(copia),
           servicios: db.list('Servicios').filter(function (s) { return si(s.activo); })
             .sort(function (a, b) { return num(a.orden) - num(b.orden); }).map(copia),
-          barberos: equipo().filter(function (r) { return r.rol === 'barbero'; }).map(function (b) {
+          barberos: equipo().filter(atiende).map(function (b) {
             return { id: b.id, nombre: b.nombre, id_sede: b.id_sede, especialidades: b.especialidades,
               servicios: b.servicios, foto_url: b.foto_url, agenda_activa: si(b.agenda_activa) };
           }),
@@ -256,7 +258,7 @@ var LB = (function () {
           if (!/^\d{4,8}$/.test(pin)) fail('Primer ingreso: crea una clave de 4 a 8 números');
           db.update('Equipo', u._row, { clave_hash: hashPin(cel, pin) });
         } else if (u.clave_hash !== hashPin(cel, pin)) fail('Celular o clave incorrectos');
-        return { session: nuevaSesion({ rol: u.rol, id: u.id }), usuario: { id: u.id, nombre: u.nombre, rol: u.rol, id_sede: u.id_sede } };
+        return { session: nuevaSesion({ rol: u.rol, id: u.id }), usuario: { id: u.id, nombre: u.nombre, rol: u.rol, id_sede: u.id_sede, atiende: atiende(u) } };
       }
     };
 
@@ -319,16 +321,29 @@ var LB = (function () {
 
     // ----- barbero (y admin actuando sobre un barbero) -----
     function idBarbero(p, s) {
-      if (s.rol === 'barbero') return s.id;
-      if (s.rol === 'admin' && p.id_barbero) return barbero(p.id_barbero).id;
+      if (s.rol === 'barbero') return s.id;                       // el barbero solo puede ver lo suyo
+      if (s.rol === 'admin') return barbero(p.id_barbero || s.id).id; // el admin ve a cualquiera, o su propia agenda
       fail('Indica el barbero');
+    }
+    /**
+     * Lo que ve el barbero de cada cita: servicio y su comisión, nunca el valor que paga el cliente.
+     * El administrador ve además el valor.
+     */
+    function paraEquipo(c, pct, conValor) {
+      var o = c;
+      var activa = ACTIVAS.indexOf(c.estado) >= 0;
+      o.comision_estimada = activa ? Math.round(num(c.valor) * pct / 100) : '';
+      if (!activa && c.estado !== 'completada') o.comision = '';
+      if (!conValor) delete o.valor;
+      return o;
     }
     var barberoAcc = {
       miAgenda: function (p, s) {
         var id = idBarbero(p, s), b = barbero(id), fecha = esFecha(p.fecha) ? p.fecha : ahora().fecha, n = nombres();
+        var pct = num(b.comision_pct), conValor = s.rol === 'admin';
         var citas = db.list('Citas').filter(function (c) { return c.id_barbero === id && c.fecha === fecha && c.estado !== 'cancelada'; })
-          .sort(ordenCitas).map(function (c) { var o = enriquecer(c, n); o.cliente_celular = (n.cl[c.id_cliente] || {}).celular || ''; return o; });
-        return { barbero: copia(b), fecha: fecha, citas: citas, hoy: ahora().fecha };
+          .sort(ordenCitas).map(function (c) { var o = enriquecer(c, n); o.cliente_celular = (n.cl[c.id_cliente] || {}).celular || ''; return paraEquipo(o, pct, conValor); });
+        return { barbero: copia(b), fecha: fecha, citas: citas, hoy: ahora().fecha, conValor: conValor };
       },
       marcarCita: function (p, s) {
         var id = idBarbero(p, s);
@@ -389,10 +404,12 @@ var LB = (function () {
           hora_fin: p.hora_fin, motivo: String(p.motivo || '').slice(0, 120) }));
       },
       miControl: function (p, s) {
-        var id = idBarbero(p, s), r = rango(p), n = nombres();
+        var id = idBarbero(p, s), r = rango(p), n = nombres(), b = barbero(id);
+        var pct = num(b.comision_pct), conValor = s.rol === 'admin';
         var citas = db.list('Citas').filter(function (c) { return c.id_barbero === id && enRango(r, c); })
-          .sort(ordenCitas).map(function (c) { return enriquecer(c, n); });
-        return { desde: r.desde, hasta: r.hasta, citas: citas, servicios: db.list('Servicios').map(copia) };
+          .sort(ordenCitas).map(function (c) { return paraEquipo(enriquecer(c, n), pct, conValor); });
+        var servicios = db.list('Servicios').map(function (x) { var o = copia(x); if (!conValor) delete o.precio; return o; });
+        return { desde: r.desde, hasta: r.hasta, citas: citas, servicios: servicios, hoy: ahora().fecha, conValor: conValor };
       }
     };
 
@@ -415,7 +432,7 @@ var LB = (function () {
           ventas: db.list('Ventas').filter(function (v) { return enRango(r, v); }).map(function (v) {
             var o = copia(v); o.cliente_nombre = (n.cl[v.id_cliente] || {}).nombre || v.id_cliente; return o;
           }),
-          equipo: equipo().map(function (u) { var o = copia(u); o.tiene_clave = !!u.clave_hash; o.agenda_activa = si(u.agenda_activa); return o; }),
+          equipo: equipo().map(function (u) { var o = copia(u); o.tiene_clave = !!u.clave_hash; o.agenda_activa = si(u.agenda_activa); o.atiende = atiende(u); return o; }),
           sedes: db.list('Sedes').map(copia), servicios: db.list('Servicios').map(copia),
           productos: db.list('Productos').map(copia), totalClientes: db.list('Clientes').length
         };
@@ -439,11 +456,13 @@ var LB = (function () {
           var u = equipo().filter(function (r) { return r.id === res.id; })[0];
           db.update('Equipo', u._row, { clave_hash: hashPin(u.celular, p.pin) });
         }
-        if (!d.id) {
+        var u2 = equipo().filter(function (r) { return r.id === res.id; })[0];
+        if (atiende(u2) && !db.list('Horarios').some(function (h) { return h.id_barbero === res.id; })) {
           ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].forEach(function (dia) {
             db.insert('Horarios', { id_barbero: res.id, dia: dia, activo: dia !== 'domingo', hora_inicio: '', hora_fin: '', descanso_inicio: '', descanso_fin: '' });
           });
         }
+        res.atiende = atiende(u2);
         return res;
       },
       guardarServicio: function (p) {

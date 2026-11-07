@@ -37,7 +37,7 @@ test('catálogo no expone claves y trae los 4 servicios con Corte Premium', () =
   const cat = c.call('catalogo');
   assert.strictEqual(cat.servicios.length, 4);
   assert.ok(cat.servicios.some((s) => s.nombre === 'Corte Premium'));
-  assert.strictEqual(cat.barberos.length, 4);
+  assert.strictEqual(cat.barberos.length, 5, '4 barberos + el administrador que también atiende');
   assert.ok(cat.barberos.every((b) => b.clave_hash === undefined && b.celular === undefined));
 });
 
@@ -161,4 +161,42 @@ test('resumen filtra por sede y barbero y cuadra totales', () => {
   assert.strictEqual(todo.ingresosServicios, manual);
   assert.strictEqual(todo.ventasTienda, 45000);
   assert.strictEqual(todo.utilidad, todo.ingresosTotales - todo.comisiones);
+});
+
+test('el barbero ve servicio y comisión, nunca el valor que paga el cliente', () => {
+  const c = montar();
+  const b1 = loginEq(c, '3000000001', '1111');
+  const ag = c.call('miAgenda', { session: b1 });
+  assert.ok(ag.citas.length > 0);
+  for (const x of ag.citas) {
+    assert.strictEqual(x.valor, undefined, 'sin valor del cliente');
+    assert.ok(x.comision_estimada > 0, 've su comisión estimada');
+  }
+  const ctl = c.call('miControl', { session: b1, desde: LB.sumarDias(HOY, -10), hasta: LB.sumarDias(HOY, 30) });
+  assert.ok(ctl.citas.every((x) => x.valor === undefined));
+  assert.ok(ctl.servicios.every((s) => s.precio === undefined), 'tampoco ve la lista de precios por esta vía');
+  assert.ok(ctl.citas.filter((x) => x.estado === 'completada').every((x) => x.comision > 0));
+  assert.strictEqual(ctl.conValor, false);
+  // el administrador sí ve el valor de la agenda de cualquier barbero
+  const adm = loginEq(c, '3000000000', '0000');
+  assert.ok(c.call('miAgenda', { session: adm, id_barbero: 'B1' }).citas.every((x) => x.valor > 0));
+});
+
+test('el administrador también atiende: tiene su agenda, los clientes lo pueden reservar', () => {
+  const c = montar();
+  const login = c.call('loginEquipo', { celular: '3000000000', pin: '0000' });
+  assert.strictEqual(login.usuario.atiende, true);
+  const adm = login.session;
+  const s = loginCli(c);
+  const cita = c.call('reservar', { session: s, id_barbero: 'ADM1', id_sede: 'S1', id_servicio: 'SV4', fecha: HOY, hora_inicio: '09:00' });
+  assert.throws(() => c.call('reservar', { session: s, id_barbero: 'ADM1', id_sede: 'S1', id_servicio: 'SV2', fecha: HOY, hora_inicio: '11:00' }), /no realiza ese servicio/);
+  const ag = c.call('miAgenda', { session: adm });               // sin id_barbero: su propia agenda
+  assert.ok(ag.citas.some((x) => x.id_cita === cita.id_cita));
+  const r = c.call('marcarCita', { session: adm, id: cita.id_cita, estado: 'completada' });
+  assert.strictEqual(r.comision, 0, 'el dueño no lleva comisión');
+  // deja de atender: desaparece del catálogo y conserva el control total
+  c.call('guardarBarbero', { session: adm, row: { id: 'ADM1', servicios: '', agenda_activa: false } });
+  assert.ok(!c.call('catalogo').barberos.some((b) => b.id === 'ADM1'));
+  assert.ok(c.call('adminData', { session: adm }).citas.length > 0);
+  assert.throws(() => c.call('miAgenda', { session: adm }), /Barbero no encontrado/);
 });

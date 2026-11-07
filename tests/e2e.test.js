@@ -107,12 +107,21 @@ test('cliente reserva → barbero atiende → admin ve el resultado y cambia un 
   await b.click('[aria-label="Día siguiente"]');
   await b.click('[aria-label="Día siguiente"]');
   await b.getByText('Tester QA').waitFor();
+  assert.strictEqual(await b.getByText(/Valor \$/).count(), 0, 'el barbero no ve el valor que paga el cliente');
+  await b.getByText(/Comisión estimada/).first().waitFor();
   await foto(b, '05-barbero-agenda');
   await b.click('text=Marcar atendida');
   await b.getByText('Atendida', { exact: true }).first().waitFor();
   // pausa su agenda: el cliente ya no lo ve disponible
   await b.click('[aria-label="Activar o pausar la agenda"]');
   await b.getByText('Agenda pausada').first().waitFor();
+  await b.click('role=tab[name="Historial"]');
+  await b.getByText('Comisión ganada').first().waitFor();
+  await foto(b, '05b-barbero-historial');
+  await b.click('role=tab[name="Próximas"]');
+  await b.getByText('Citas próximas').waitFor();
+  assert.strictEqual(await b.getByText('Tester QA').count(), 0, 'la cita ya atendida no figura como próxima');
+  await b.click('role=tab[name="Hoy"]');
   await b.goto(base + '/equipo/#/control');
   await b.locator('h1', { hasText: 'Mi control' }).waitFor();
   await foto(b, '06-barbero-control');
@@ -161,6 +170,13 @@ test('cliente reserva → barbero atiende → admin ve el resultado y cambia un 
   await c.click('text=Corte Premium');
   const tarjetaB2 = c.locator('a[href="#/barbero/B2"]');
   assert.match(await tarjetaB2.innerText(), /Hoy no atiende/);
+
+  // el administrador ve su propia agenda (también atiende) y el valor de los servicios
+  await a.click('a[href="#/agendas"]');
+  await a.getByText('Mi agenda').first().waitFor();
+  await a.click('button.chip:has-text("Barbero QA 1")');
+  await a.getByText(/Valor \$/).first().waitFor();
+  await foto(a, '08b-admin-agendas');
 
   // admin móvil
   const am = await nuevaPagina(ctx);

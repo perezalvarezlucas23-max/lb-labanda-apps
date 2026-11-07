@@ -22,7 +22,7 @@ var LBQA = (function () {
 
   /** Usuarios de prueba (solo QA). */
   var CREDENCIALES = [
-    { rol: 'Administrador', nombre: 'Admin QA', celular: '3000000000', pin: '0000' },
+    { rol: 'Administrador (también atiende)', nombre: 'Admin QA', celular: '3000000000', pin: '0000' },
     { rol: 'Barbero', nombre: 'Barbero QA 1', celular: '3000000001', pin: '1111' },
     { rol: 'Barbero', nombre: 'Barbero QA 2', celular: '3000000002', pin: '2222' },
     { rol: 'Barbero', nombre: 'Barbero QA 3', celular: '3000000003', pin: '3333' },
@@ -41,9 +41,10 @@ var LBQA = (function () {
     CREDENCIALES.forEach(function (c, i) {
       if (c.rol === 'Cliente') return;
       var admin = i === 0;
+      // el administrador también atiende (Corte y Corte Premium) y no lleva comisión
       t.Equipo.push({ id: admin ? 'ADM1' : 'B' + i, nombre: c.nombre, celular: c.celular, rol: admin ? 'admin' : 'barbero',
-        id_sede: admin ? '' : (i <= 2 ? 'S1' : 'S2'), comision_pct: admin ? '' : 40, especialidades: admin ? '' : esp[i - 1],
-        servicios: admin ? '' : 'SV1,SV2,SV3,SV4', foto_url: '', agenda_activa: !admin && i !== 4,
+        id_sede: admin ? 'S1' : (i <= 2 ? 'S1' : 'S2'), comision_pct: admin ? 0 : 40, especialidades: admin ? 'Cortes premium' : esp[i - 1],
+        servicios: admin ? 'SV1,SV4' : 'SV1,SV2,SV3,SV4', foto_url: '', agenda_activa: i !== 4,
         clave_hash: L.hashPin(c.celular, c.pin), fecha_registro: hoy });
     });
     t.Servicios = [
@@ -52,7 +53,7 @@ var LBQA = (function () {
       { id_servicio: 'SV3', nombre: 'Corte + Barba', descripcion: 'Combo', precio: 35000, duracion_min: 60, activo: true, orden: 3 },
       { id_servicio: 'SV4', nombre: 'Corte Premium', descripcion: 'Servicio premium', precio: 50000, duracion_min: 60, activo: true, orden: 4 }
     ];
-    ['B1', 'B2', 'B3', 'B4'].forEach(function (b) {
+    ['B1', 'B2', 'B3', 'B4', 'ADM1'].forEach(function (b) {
       ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].forEach(function (d) {
         t.Horarios.push({ id_barbero: b, dia: d, activo: d !== 'domingo', hora_inicio: '09:00', hora_fin: '19:00', descanso_inicio: '13:00', descanso_fin: '14:00' });
       });

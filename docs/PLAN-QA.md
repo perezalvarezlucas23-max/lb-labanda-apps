@@ -6,7 +6,7 @@
 
 | Rol | Celular | Clave |
 | --- | --- | --- |
-| Administrador | 3000000000 | 0000 |
+| Administrador (también atiende) | 3000000000 | 0000 |
 | Barbero QA 1 / 2 / 3 | 3000000001 / 02 / 03 | 1111 / 2222 / 3333 |
 | Barbero QA 4 (agenda pausada) | 3000000004 | 4444 |
 | Cliente QA | 3100000001 | (sin clave) |
@@ -17,7 +17,7 @@
 
 `npm test` debe terminar sin fallas:
 
-- **Lógica** (13 casos): disponibilidad por barbero, descanso, duración del servicio, horas pasadas, domingo, agenda pausada, doble reserva, sede del barbero, roles, comisión, puntos, PIN, primer ingreso del admin, compras, totales por sede y barbero.
+- **Lógica** (15 casos): disponibilidad por barbero, descanso, duración del servicio, horas pasadas, domingo, agenda pausada, doble reserva, sede del barbero, roles, lo que ve el barbero (sin valor del cliente), el administrador que también atiende, comisión, puntos, PIN, primer ingreso del admin, compras, totales por sede y barbero.
 - **API de Google Sheets simulada** (1 flujo): el mismo archivo `dist/lb-api.gs` que se pega en la hoja, con fechas y horas como las guarda Google Sheets.
 - **Punta a punta en navegador** (1 flujo largo): registro de cliente → reserva Corte Premium → la hora desaparece para otros → compra en tienda → barbero entra (clave errada y correcta) → marca atendida → pausa agenda → admin filtra por rango, barbero y sede → cambia precio → el cliente ve el precio nuevo y al barbero no disponible. Deja capturas en `tests/capturas/`.
 
@@ -52,6 +52,8 @@ Marca cada caso en los dos sistemas.
 | B6 | Horarios: apagar un día y guardar | Ese día ya no ofrece horas al cliente | ☐ | ☐ |
 | B7 | Bloquear un horario puntual | Esas horas desaparecen para el cliente | ☐ | ☐ |
 | B8 | Un barbero intenta ver datos de admin | No tiene el menú ni el acceso | ☐ | ☐ |
+| B9 | El barbero revisa sus citas | Ve servicio y **su comisión**; **no** ve el valor que paga el cliente | ☐ | ☐ |
+| B10 | Agenda: Historial, Hoy y Próximas | Historial (7/30/90 días) con comisión ganada; Próximas con comisión estimada | ☐ | ☐ |
 
 ### App LB Equipo – administrador (celular y computador)
 | # | Caso | Resultado esperado | Celular | Computador |
@@ -64,6 +66,9 @@ Marca cada caso en los dos sistemas.
 | A6 | Cambiar precio y duración del Corte Premium | El cliente ve el precio nuevo y la duración cambia las horas | ☐ | ☐ |
 | A7 | Pedidos: marcar pagado | Suma puntos al cliente | ☐ | ☐ |
 | A8 | Editar sede | El cliente ve los datos nuevos | ☐ | ☐ |
+| A9 | Agendas › Mi agenda (el administrador también atiende) | Ve y marca sus propias citas; los clientes lo pueden reservar | ☐ | ☐ |
+| A10 | Barberos › Mi perfil › desmarcar "También atiendo clientes" | Desaparece de la reserva de clientes y conserva el control total | ☐ | ☐ |
+| A11 | Agendas de un barbero | El administrador sí ve el valor de cada servicio | ☐ | ☐ |
 
 ## 3. Criterios para pasar a STAGING
 
