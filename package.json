@@ -1,0 +1,14 @@
+{
+  "name": "lb-labanda-apps",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LB La Banda – apps cliente y equipo (PWA) sobre Google Sheets",
+  "scripts": {
+    "build": "node scripts/build-gs.js",
+    "test": "node scripts/build-gs.js && node --test tests/logic.test.js tests/gs-api.test.js tests/e2e.test.js",
+    "test:rapido": "node --test tests/logic.test.js tests/gs-api.test.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
